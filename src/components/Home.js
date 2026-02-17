@@ -40,6 +40,9 @@ function Home() {
           </div>
 
           <input
+            id="search"
+            name="search"
+            data-cobrowse-field="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search projects, skills, about, contact..."

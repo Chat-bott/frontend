@@ -1,27 +1,82 @@
-import { extractPageContent } from '../utils/contentExtractor';
-import {
-  scrollToSection,
-  fillInput,
-  highlightByText,
-  clickByText
-} from '../utils/coBrowsingActions';
+import { extractPageContent } from "../utils/contentExtractor";
+import { scrollToSection, scrollPage, fillInput } from "../utils/coBrowsingActions";
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5001";
+
+// ✅ Robust multi-field parser (no greedy capture)
+// Supports: name, email, message, search
+const parseFill = (text) => {
+  const t = String(text || "").trim();
+  if (!t) return [];
+
+  const out = [];
+
+  // 1) Pattern: "fill name as Ved fill email as ved@gmail.com fill search as react"
+  // Also supports: add/set + optional "field" + separators.
+  const re =
+    /\b(?:fill|add|set)\s+(name|email|message|search)\s*(?:field)?\s*(?:as|to|=)?\s*/gi;
+
+  const hits = [];
+  let m;
+
+  while ((m = re.exec(t)) !== null) {
+    hits.push({
+      field: String(m[1] || "").toLowerCase(),
+      matchIndex: m.index, // where this "fill <field>" starts
+      valueStart: re.lastIndex, // where the value starts
+    });
+  }
+
+  for (let i = 0; i < hits.length; i++) {
+    const start = hits[i].valueStart;
+    const end = i + 1 < hits.length ? hits[i + 1].matchIndex : t.length;
+
+    let value = t.slice(start, end).trim();
+
+    // clean separators like "," ":" "-"
+    value = value.replace(/^[,:-]\s*/, "");
+    value = value.replace(/[,\s]+$/, "");
+
+    if (value) out.push({ field: hits[i].field, value });
+  }
+
+  // 2) Pattern: "fill contact form: name=Ved, email=..., message=..."
+  // Also allow "fill form:" etc.
+  if (/\bfill\s+(?:contact\s+)?form\b/i.test(t)) {
+    const n = t.match(/\bname\s*=\s*([^,]+)/i);
+    const e = t.match(/\bemail\s*=\s*([^,]+)/i);
+    const msg = t.match(/\bmessage\s*=\s*([\s\S]+)/i);
+    const s = t.match(/\bsearch\s*=\s*([^,]+)/i);
+
+    if (n?.[1]) out.push({ field: "name", value: n[1].trim() });
+    if (e?.[1]) out.push({ field: "email", value: e[1].trim() });
+    if (msg?.[1]) out.push({ field: "message", value: msg[1].trim() });
+    if (s?.[1]) out.push({ field: "search", value: s[1].trim() });
+  }
+
+  // 3) Pattern: "add my name Neeraj to name field ..."
+  const addMyName = t.match(/\badd\s+my\s+name\s+(.+?)\s+to\s+name\b/i);
+  if (addMyName?.[1]) out.push({ field: "name", value: addMyName[1].trim() });
+
+  // Deduplicate (last wins)
+  const final = {};
+  for (const x of out) final[x.field] = x.value;
+
+  return Object.entries(final).map(([field, value]) => ({ field, value }));
+};
 
 export const sendMessage = async (userMessage, conversationHistory = []) => {
   try {
     const pageContent = extractPageContent();
-    
+
     const response = await fetch(`${API_BASE_URL}/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: userMessage,
         conversationHistory,
-        pageContent
-      })
+        pageContent,
+      }),
     });
 
     if (!response.ok) {
@@ -29,126 +84,77 @@ export const sendMessage = async (userMessage, conversationHistory = []) => {
     }
 
     const data = await response.json();
-    
     const actionResults = [];
-    
-    if (data.actions && data.actions.length > 0) {
+
+    // 1) Execute actions returned by backend (Gemini)
+    if (Array.isArray(data.actions) && data.actions.length > 0) {
       for (const action of data.actions) {
         switch (action.type) {
-          case 'scroll_to_section':
-            const scrollResult = scrollToSection(action.data.sectionId);
-            actionResults.push(scrollResult);
+          case "scroll_to_section": {
+            actionResults.push(scrollToSection(action?.data?.sectionId));
             break;
-          case 'highlight':
-            const highlightResult = highlightByText(action.data.text);
-            if (highlightResult.success) {
-              actionResults.push(highlightResult);
-            }
+          }
+          case "scroll_page": {
+            actionResults.push(scrollPage(action?.data?.direction));
             break;
-          case 'click':
-            const clickResult = clickByText(action.data.text);
-            if (clickResult.success) {
-              actionResults.push(clickResult);
-            }
+          }
+          case "fill_input": {
+            const field = action?.data?.field;
+            const selector = action?.data?.selector;
+            const value = action?.data?.value ?? "";
+            actionResults.push(fillInput(selector || field, value));
             break;
-          case 'fill':
-            const fillResult = fillInput(action.data.selector, action.data.value);
-            actionResults.push(fillResult);
-            break;
+          }
           default:
-            console.warn('Unknown action type:', action.type);
+            console.warn("Unknown action type:", action.type);
             break;
         }
       }
     }
 
-    if (actionResults.length === 0) {
-      const lowerMessage = userMessage.toLowerCase();
-      if (lowerMessage.includes('go to') || lowerMessage.includes('navigate to') || 
-          lowerMessage.includes('show me') || lowerMessage.includes('take me to') ||
-          lowerMessage.includes('scroll to')) {
-        for (const section of ['projects', 'contact', 'about', 'home']) {
-          if (lowerMessage.includes(section)) {
-            const result = scrollToSection(section);
-            actionResults.push(result);
-            break;
-          }
-        }
-      }
-      if (lowerMessage.includes('highlight') || lowerMessage.includes('point out') || 
-          lowerMessage.includes('show me the') || lowerMessage.includes('find')) {
-        for (const project of pageContent.projects) {
-          const projectLower = project.title.toLowerCase();
-          if (lowerMessage.includes(projectLower) || 
-              (lowerMessage.includes('recent') && project.date === '2024') ||
-              (lowerMessage.includes('first') && project.id === 1) ||
-              (lowerMessage.includes('last') && project.id === pageContent.projects.length)) {
-            const result = highlightByText(project.title);
-            actionResults.push(result);
-            break;
-          }
-        }
-        if (actionResults.length === 0) {
-          for (const section of pageContent.sections) {
-            if (lowerMessage.includes(section.id)) {
-              const result = scrollToSection(section.id);
-              actionResults.push(result);
-              break;
-            }
-          }
-        }
-      }
-      if (lowerMessage.includes('fill') || lowerMessage.includes('enter') || lowerMessage.includes('type')) {
-        const nameMatch = lowerMessage.match(/name[:\s]+([^,.]+)/i);
-        const emailMatch = lowerMessage.match(/email[:\s]+([^,.]+)/i);
-        const messageMatch = lowerMessage.match(/message[:\s]+(.+)/i);
-        
-        if (nameMatch) {
-          const result = fillInput('#name', nameMatch[1].trim());
-          actionResults.push(result);
-        }
-        if (emailMatch) {
-          const result = fillInput('#email', emailMatch[1].trim());
-          actionResults.push(result);
-        }
-        if (messageMatch) {
-          const result = fillInput('#message', messageMatch[1].trim());
-          actionResults.push(result);
-        }
-      }
-      if (lowerMessage.includes('click') || lowerMessage.includes('press')) {
-        const buttonTexts = ['view details', 'send message', 'get in touch', 'view my work'];
-        for (const text of buttonTexts) {
-          if (lowerMessage.includes(text)) {
-            const result = clickByText(text);
-            if (result.success) {
-              actionResults.push(result);
-              break;
-            }
-          }
-        }
+    // 2) Frontend fallback (works even if Gemini lies like “no search bar”)
+    const lower = String(userMessage || "").toLowerCase().trim();
+
+    // Scroll intents
+    const wantUp = lower === "up" || lower.includes("scroll up") || lower.includes("go up");
+    const wantDown =
+      lower === "down" || lower.includes("scroll down") || lower.includes("go down");
+    const wantTop =
+      lower === "top" || lower.includes("scroll to top") || lower.includes("go to top");
+    const wantBottom =
+      lower === "bottom" ||
+      lower.includes("scroll to bottom") ||
+      lower.includes("go to bottom");
+
+    if (wantUp) actionResults.push(scrollPage("up"));
+    if (wantDown) actionResults.push(scrollPage("down"));
+    if (wantTop) actionResults.push(scrollPage("top"));
+    if (wantBottom) actionResults.push(scrollPage("bottom"));
+
+    // Scroll to section
+    for (const section of ["projects", "contact", "about", "home"]) {
+      if (
+        lower.includes(`scroll to ${section}`) ||
+        lower.includes(`go to ${section}`) ||
+        lower.includes(`navigate to ${section}`)
+      ) {
+        actionResults.push(scrollToSection(section));
+        break;
       }
     }
 
-    return {
-      text: data.text,
-      actions: actionResults
-    };
+    // Fill fields (name/email/message/search)
+    const fills = parseFill(userMessage);
+    for (const f of fills) {
+      actionResults.push(fillInput(f.field, f.value));
+    }
+
+    return { text: data.text, actions: actionResults };
   } catch (error) {
-    console.error('API Error:', error);
-    let errorMessage = 'I apologize, but I encountered an error. ';
-    
-    if (error.message?.includes('fetch')) {
-      errorMessage += 'Unable to connect to the server. Please check if the backend is running.';
-    } else if (error.message?.includes('500')) {
-      errorMessage += 'Server error. Please try again later.';
-    } else {
-      errorMessage += `Error: ${error.message || 'Unknown error'}. Please check your connection.`;
-    }
-    
+    console.error("API Error:", error);
     return {
-      text: errorMessage,
-      actions: []
+      text: `Error: ${error?.message || "Unknown error"}`,
+      actions: [],
     };
   }
 };

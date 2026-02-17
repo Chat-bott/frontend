@@ -30,15 +30,12 @@ function Chatbot() {
     setInputValue('');
     setIsLoading(true);
 
-    // Add user message
     const newMessages = [...messages, { role: 'user', content: userMessage }];
     setMessages(newMessages);
 
     try {
-      // Send to Gemini API
       const response = await sendMessageWithActions(userMessage, messages);
       
-      // Add assistant response
       setMessages([...newMessages, { role: 'assistant', content: response.text }]);
     } catch (error) {
       console.error('Chatbot Error:', error);
@@ -56,7 +53,6 @@ function Chatbot() {
 
   return (
     <>
-      {/* Chatbot Toggle Button */}
       <button
         className="fixed bottom-5 right-5 w-15 h-15 rounded-full bg-blue-600 text-white text-2xl border-none shadow-lg z-[1001] transition-all hover:bg-blue-700 hover:scale-110 flex items-center justify-center"
         onClick={() => setIsOpen(!isOpen)}
@@ -65,7 +61,6 @@ function Chatbot() {
         {isOpen ? '✕' : '💬'}
       </button>
 
-      {/* Chatbot Window */}
       {isOpen && (
         <div className="fixed bottom-24 right-5 w-96 max-w-[calc(100vw-2.5rem)] h-[600px] max-h-[calc(100vh-7.5rem)] bg-white rounded-xl shadow-2xl flex flex-col z-[1000] overflow-hidden">
           <div className="bg-blue-600 text-white p-4 flex justify-between items-center">

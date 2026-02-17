@@ -1,84 +1,127 @@
 export const scrollToSection = (sectionId) => {
-  const element = document.getElementById(sectionId);
+  const id = String(sectionId || "").trim();
+  const element = document.getElementById(id);
+
   if (element) {
-    element.scrollIntoView({ behavior: 'smooth' });
-    return { success: true, message: `Scrolled to ${sectionId} section` };
+    element.scrollIntoView({ behavior: "smooth", block: "start" });
+    return { success: true, message: `Scrolled to ${id} section` };
   }
-  return { success: false, message: `Section ${sectionId} not found` };
+
+  return { success: false, message: `Section ${id} not found` };
+};
+export const scrollPage = (direction) => {
+  const dir = String(direction || "").toLowerCase().trim();
+
+  const doc = document.documentElement;
+  const body = document.body;
+
+  const maxScrollHeight = Math.max(
+    doc.scrollHeight,
+    body.scrollHeight,
+    doc.offsetHeight,
+    body.offsetHeight
+  );
+
+  if (dir === "up" || dir === "top") {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return { success: true, message: "Scrolled to top" };
+  }
+
+  if (dir === "down" || dir === "bottom") {
+    window.scrollTo({ top: maxScrollHeight, behavior: "smooth" });
+    return { success: true, message: "Scrolled to bottom" };
+  }
+
+  return { success: false, message: `Invalid scroll direction: ${direction}` };
 };
 
-export const scrollPage = (direction, amount = 500) => {
-  const scrollAmount = direction === 'down' ? amount : -amount;
-  window.scrollBy({
-    top: scrollAmount,
-    behavior: 'smooth'
-  });
-  return { success: true, message: `Scrolled ${direction} by ${amount}px` };
+// Scroll to a project card by matching its .project-title text (case-insensitive)
+export const scrollToProject = (projectTitle) => {
+  const wanted = String(projectTitle || "").toLowerCase().trim();
+  if (!wanted) return { success: false, message: "Project title is empty" };
+
+  const cards = Array.from(document.querySelectorAll(".project-card"));
+  for (const card of cards) {
+    const titleEl = card.querySelector(".project-title");
+    const title = String(titleEl?.textContent || "").toLowerCase().trim();
+
+    if (title && (title === wanted || title.includes(wanted) || wanted.includes(title))) {
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      return { success: true, message: `Scrolled to project: ${titleEl?.textContent || projectTitle}` };
+    }
+  }
+
+  return { success: false, message: `Project not found: ${projectTitle}` };
 };
 
 export const clickElement = (selector) => {
   const element = document.querySelector(selector);
+
   if (element) {
     element.click();
     return { success: true, message: `Clicked element: ${selector}` };
   }
+
   return { success: false, message: `Element not found: ${selector}` };
 };
+ 
+// filling code
+export const fillInput = (fieldOrSelector, value) => {
+  const field = String(fieldOrSelector || "").trim();
+  const val = value ?? "";
 
-export const highlightElement = (selector, duration = 3000) => {
-  const element = document.querySelector(selector);
-  if (element) {
-    element.classList.add('highlighted');
-    setTimeout(() => {
-      element.classList.remove('highlighted');
-    }, duration);
-    return { success: true, message: `Highlighted element: ${selector}` };
-  }
-  return { success: false, message: `Element not found: ${selector}` };
-};
+  const setNativeValue = (el, v) => {
+    const proto = Object.getPrototypeOf(el);
+    const desc =
+      Object.getOwnPropertyDescriptor(proto, "value") ||
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value") ||
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
 
-export const fillInput = (selector, value) => {
-  const element = document.querySelector(selector);
-  if (element && (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA')) {
-    element.value = value;
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
-    return { success: true, message: `Filled input ${selector} with: ${value}` };
-  }
-  return { success: false, message: `Input element not found: ${selector}` };
-};
+    if (desc?.set) desc.set.call(el, v);
+    else el.value = v;
 
-export const findElementByText = (text, elementType = null) => {
-  const elements = elementType 
-    ? document.querySelectorAll(elementType)
-    : document.querySelectorAll('*');
-  
-  for (const el of elements) {
-    if (el.textContent && el.textContent.toLowerCase().includes(text.toLowerCase())) {
-      return el;
-    }
-  }
-  return null;
-};
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  };
 
-export const highlightByText = (text, elementType = null) => {
-  const element = findElementByText(text, elementType);
-  if (element) {
-    element.classList.add('highlighted');
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => {
-      element.classList.remove('highlighted');
-    }, 3000);
-    return { success: true, message: `Highlighted element containing: ${text}` };
-  }
-  return { success: false, message: `No element found containing: ${text}` };
-};
+  const findByField = (f) => {
+    // direct selector
+    if (f.startsWith("#") || f.startsWith(".") || f.startsWith("["))
+      return document.querySelector(f);
 
-export const clickByText = (text, elementType = null) => {
-  const element = findElementByText(text, elementType);
-  if (element) {
-    element.click();
-    return { success: true, message: `Clicked element containing: ${text}` };
+    // common mappings
+    return (
+      document.querySelector(`[data-cobrowse-field="${CSS.escape(f)}"]`) ||
+      document.getElementById(f) ||
+      document.querySelector(`[name="${CSS.escape(f)}"]`) ||
+      Array.from(document.querySelectorAll("label")).reduce((acc, label) => {
+        if (acc) return acc;
+        const t = (label.textContent || "").toLowerCase().trim();
+        if (!t.includes(f.toLowerCase())) return null;
+
+        const forId = label.getAttribute("for");
+        if (forId) return document.getElementById(forId);
+
+        // label wrapping input
+        return label.querySelector("input, textarea");
+      }, null) ||
+      Array.from(document.querySelectorAll("input, textarea")).find((el) => {
+        const ph = (el.getAttribute("placeholder") || "").toLowerCase();
+        return ph.includes(f.toLowerCase());
+      }) ||
+      null
+    );
+  };
+
+  const el = findByField(field);
+
+  if (!el) {
+    return { success: false, message: `Input not found for: ${field}` };
   }
-  return { success: false, message: `No clickable element found containing: ${text}` };
+
+  el.focus();
+  setNativeValue(el, String(val));
+  el.blur();
+
+  return { success: true, message: `Filled ${field}` };
 };
