@@ -26,7 +26,6 @@ function About() {
         </div>
 
         <div className="mt-10 grid gap-6 lg:grid-cols-3">
-          {/* Main card */}
           <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="space-y-5">
               <p className="text-base leading-7 text-slate-700 sm:text-lg">

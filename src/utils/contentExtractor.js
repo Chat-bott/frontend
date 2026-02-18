@@ -6,8 +6,6 @@ export const extractPageContent = () => {
     about: null,
     search: { exists: false },
   };
-
-  // Sections
   const sections = document.querySelectorAll(".section");
   sections.forEach((section) => {
     const sectionId = section.id;
@@ -26,8 +24,6 @@ export const extractPageContent = () => {
       text: sectionText,
     });
   });
-
-  // Projects
   const projectCards = document.querySelectorAll(".project-card");
   projectCards.forEach((card, index) => {
     const title = card.querySelector(".project-title")?.textContent || "";
@@ -46,8 +42,6 @@ export const extractPageContent = () => {
       date,
     });
   });
-
-  // Contact info
   const contactSection = document.getElementById("contact");
   if (contactSection) {
     const contactItems = Array.from(
@@ -55,8 +49,6 @@ export const extractPageContent = () => {
     ).map((el) => el.textContent.trim());
     content.contact = { items: contactItems };
   }
-
-  // About skills
   const aboutSection = document.getElementById("about");
   if (aboutSection) {
     const skills = Array.from(aboutSection.querySelectorAll(".skill-tag")).map(
@@ -64,8 +56,6 @@ export const extractPageContent = () => {
     );
     content.about = { skills };
   }
-
-  // ✅ Search bar detection
   const searchEl =
     document.querySelector('[data-cobrowse-field="search"]') ||
     document.getElementById("search") ||

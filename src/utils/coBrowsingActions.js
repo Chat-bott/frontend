@@ -34,8 +34,6 @@ export const scrollPage = (direction) => {
 
   return { success: false, message: `Invalid scroll direction: ${direction}` };
 };
-
-// Scroll to a project card by matching its .project-title text (case-insensitive)
 export const scrollToProject = (projectTitle) => {
   const wanted = String(projectTitle || "").toLowerCase().trim();
   if (!wanted) return { success: false, message: "Project title is empty" };
@@ -64,8 +62,6 @@ export const clickElement = (selector) => {
 
   return { success: false, message: `Element not found: ${selector}` };
 };
- 
-// filling code
 export const fillInput = (fieldOrSelector, value) => {
   const field = String(fieldOrSelector || "").trim();
   const val = value ?? "";
@@ -85,11 +81,8 @@ export const fillInput = (fieldOrSelector, value) => {
   };
 
   const findByField = (f) => {
-    // direct selector
     if (f.startsWith("#") || f.startsWith(".") || f.startsWith("["))
       return document.querySelector(f);
-
-    // common mappings
     return (
       document.querySelector(`[data-cobrowse-field="${CSS.escape(f)}"]`) ||
       document.getElementById(f) ||
@@ -101,8 +94,6 @@ export const fillInput = (fieldOrSelector, value) => {
 
         const forId = label.getAttribute("for");
         if (forId) return document.getElementById(forId);
-
-        // label wrapping input
         return label.querySelector("input, textarea");
       }, null) ||
       Array.from(document.querySelectorAll("input, textarea")).find((el) => {
